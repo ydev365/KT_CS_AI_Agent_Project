@@ -78,19 +78,22 @@ python main.py
 
 Backend: http://localhost:8000
 
-### 4. 요금제 데이터 크롤링 (최초 1회)
+### 4. 요금제 데이터 크롤링 (최초 1회)<= 이것은 내가 이미 크롤링을 해서 chromadb에 저장되어있으므로 안해도 된다.
 
 ```bash
 cd backend
+venv\Scripts\activate
 python -m vectordb.firecrawl_loader
 ```
 
-### 5. 샘플 데이터 생성 (선택)
+### 5. 샘플 데이터 생성 (더미데이터로 미리 KT 회원인사람들 등록되어있게 하는거)
 
 ```bash
 cd backend
+venv\Scripts\activate
 python -m db.init_db
 ```
+
 
 ### 6. Frontend 실행
 
@@ -142,6 +145,13 @@ Frontend: http://localhost:3000
 - 5G 웰컴 (외국인 전용)
 - 5G 복지 (장애인 전용)
 
+
+### sample customer data 
+김철수 010-1234-5678
+이영희 010-8765-4321
+박지민 010-1111-2222
+최민수 010-5555-6666
+정미영 010-9999-8888
 
 
 트러블슈팅 파트
