@@ -1,0 +1,33 @@
+from pydantic_settings import BaseSettings
+from functools import lru_cache
+
+
+class Settings(BaseSettings):
+    # OpenAI
+    openai_api_key: str
+
+    # Firecrawl
+    firecrawl_api_key: str
+
+    # MySQL
+    mysql_host: str = "localhost"
+    mysql_port: int = 3306
+    mysql_user: str = "root"
+    mysql_password: str
+    mysql_database: str = "kt_cs_db"
+
+    # ChromaDB
+    chroma_persist_dir: str = "./data/chroma"
+
+    @property
+    def database_url(self) -> str:
+        return f"mysql+pymysql://{self.mysql_user}:{self.mysql_password}@{self.mysql_host}:{self.mysql_port}/{self.mysql_database}"
+
+    class Config:
+        env_file = ".env"
+        env_file_encoding = "utf-8"
+
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings()
