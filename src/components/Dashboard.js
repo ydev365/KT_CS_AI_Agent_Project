@@ -54,6 +54,75 @@ const RightPanel = styled.div`
   min-width: 350px;
 `;
 
+// 생년월일 포맷 변환 (YYYYMMDD → YYYY-MM-DD)
+const formatBirthDate = (birthDate) => {
+  if (!birthDate) return null;
+  if (birthDate.includes('-')) return birthDate;
+  return `${birthDate.slice(0, 4)}-${birthDate.slice(4, 6)}-${birthDate.slice(6, 8)}`;
+};
+
+// 이전 상담 내역 더미 데이터
+const getConsultationHistoryDummy = () => [
+  {
+    id: 'H001',
+    date: '2024-11-25 14:30',
+    summary: 'LTE → 5G 요금제 변경 문의',
+    status: 'resolved',
+    tags: ['요금제 변경', '5G 전환'],
+    conversation: [
+      { speaker: 'ai', content: '안녕하세요, KT AI 상담사입니다. 무엇을 도와드릴까요?', timestamp: '14:30:10' },
+      { speaker: 'customer', content: 'LTE 요금제 쓰고 있는데 5G로 바꾸고 싶어요', timestamp: '14:30:25' },
+      { speaker: 'ai', content: '네, 5G 요금제로 변경 도와드리겠습니다. 현재 LTE 베이직 요금제 사용 중이시네요.', timestamp: '14:30:35' },
+      { speaker: 'customer', content: '데이터 많이 쓰는 편이라 넉넉한 걸로요', timestamp: '14:30:50' },
+      { speaker: 'ai', content: '5G 슬림 14GB 요금제 추천드립니다. 월 55,000원이고 데이터 14GB에 다 쓰면 5Mbps로 무제한 사용 가능해요.', timestamp: '14:31:05' },
+    ],
+    aiSummary: {
+      currentPlan: 'LTE 베이직',
+      requestedFeature: '5G 전환, 데이터 증량',
+      mainConcern: 'LTE에서 5G로 업그레이드',
+      result: '5G 슬림 14GB 요금제 가입 완료'
+    }
+  },
+  {
+    id: 'H002',
+    date: '2024-10-15 10:15',
+    summary: '가족 결합 할인 문의',
+    status: 'resolved',
+    tags: ['결합할인', '가족'],
+    conversation: [
+      { speaker: 'ai', content: '안녕하세요, 무엇을 도와드릴까요?', timestamp: '10:15:10' },
+      { speaker: 'customer', content: '가족 결합 하면 얼마나 할인 되나요?', timestamp: '10:15:30' },
+      { speaker: 'ai', content: '가족 결합 시 인원 수에 따라 할인이 적용됩니다. 2명이면 10%, 3명 이상이면 최대 20%까지 할인 받으실 수 있어요.', timestamp: '10:15:50' },
+    ],
+    aiSummary: {
+      currentPlan: '5G 슬림 14GB',
+      requestedFeature: '가족 결합 할인',
+      mainConcern: '요금 절감',
+      result: '가족 결합 할인 안내 완료'
+    }
+  },
+  {
+    id: 'H003',
+    date: '2024-09-20 16:45',
+    summary: '인터넷 결합 상품 가입',
+    status: 'resolved',
+    tags: ['인터넷', '결합상품'],
+    conversation: [
+      { speaker: 'ai', content: '안녕하세요, KT AI 상담사입니다.', timestamp: '16:45:10' },
+      { speaker: 'customer', content: '인터넷이랑 휴대폰 같이 쓰면 할인 되나요?', timestamp: '16:45:25' },
+      { speaker: 'ai', content: '네, KT 기가인터넷과 모바일 결합 시 월 최대 16,500원 할인 가능합니다.', timestamp: '16:45:40' },
+      { speaker: 'customer', content: '그럼 인터넷도 같이 가입할게요', timestamp: '16:46:00' },
+      { speaker: 'ai', content: '네, 기가인터넷 가입 도와드리겠습니다. 상담사 연결해드릴게요.', timestamp: '16:46:15' },
+    ],
+    aiSummary: {
+      currentPlan: '5G 슬림 14GB',
+      requestedFeature: '인터넷 결합',
+      mainConcern: '결합 할인 혜택',
+      result: '기가인터넷 가입 진행'
+    }
+  }
+];
+
 const Dashboard = () => {
   const [conversationLog, setConversationLog] = useState([]);
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -273,18 +342,53 @@ const Dashboard = () => {
           setConversationLog(formattedConversation);
         }
 
-        // AI 분석 설정
+        // AI 분석 설정 (백엔드 형식 → 프론트엔드 형식 변환)
         if (data.summary || data.recommendations) {
+          // recommendations 배열을 프론트엔드 형식으로 변환
+          const normalizedRecommendations = (data.recommendations || []).map(rec => ({
+            id: rec.id,
+            name: rec.name,
+            price: rec.price,
+            discountedPrice: rec.discounted_price || rec.price,
+            discount: rec.discount || '할인 없음',
+            data: rec.data,
+            features: rec.features || [],
+            badge: rec.badge,
+            comparison: rec.comparison,
+            score: rec.score,
+            scoreBreakdown: rec.score_breakdown
+          }));
+
           setAiAnalysis({
             summary: data.summary,
-            recommendedPlans: data.recommendations || []
+            recommendedPlans: normalizedRecommendations
           });
         }
 
-        // 고객 정보 설정
+        // 고객 정보 설정 (백엔드 형식 → 프론트엔드 형식 변환)
         if (data.customerInfo) {
-          setCustomerInfo(data.customerInfo);
+          const ci = data.customerInfo;
+          setCustomerInfo({
+            name: ci.name,
+            phone: ci.phone,
+            gender: ci.gender || '정보 없음',
+            birthDate: ci.birth_date ? formatBirthDate(ci.birth_date) : null,
+            age: ci.age,
+            isKtMember: ci.is_kt_customer,
+            membershipGrade: ci.membership_grade || '일반',
+            ktJoinDate: ci.kt_join_date,
+            currentPlan: ci.current_plan,
+            currentPlanStartDate: ci.kt_join_date, // 가입일로 대체
+            monthlyFee: ci.monthly_fee || 0,
+            services: ci.services || [],
+            totalMonthlyFee: ci.total_monthly_fee || ci.monthly_fee || 0,
+            loyaltyYears: ci.loyalty_years || 0,
+            familyMembers: ci.family_members || 1
+          });
         }
+
+        // 이전 상담 내역 더미 데이터 설정 (요금제 가입 관련)
+        setConsultationHistory(getConsultationHistoryDummy());
 
         setLoading(false);
         return true;
@@ -298,8 +402,27 @@ const Dashboard = () => {
       try {
         const auth = JSON.parse(authResult);
         if (auth.customer) {
-          setCustomerInfo(auth.customer);
+          const ci = auth.customer;
+          setCustomerInfo({
+            name: ci.name,
+            phone: ci.phone,
+            gender: ci.gender || '정보 없음',
+            birthDate: ci.birth_date ? formatBirthDate(ci.birth_date) : null,
+            age: ci.age,
+            isKtMember: ci.is_kt_customer,
+            membershipGrade: ci.membership_grade || '일반',
+            ktJoinDate: ci.kt_join_date,
+            currentPlan: ci.current_plan,
+            currentPlanStartDate: ci.kt_join_date,
+            monthlyFee: ci.monthly_fee || 0,
+            services: ci.services || [],
+            totalMonthlyFee: ci.total_monthly_fee || ci.monthly_fee || 0,
+            loyaltyYears: ci.loyalty_years || 0,
+            familyMembers: ci.family_members || 1
+          });
         }
+        // 이전 상담 내역 더미 데이터 설정
+        setConsultationHistory(getConsultationHistoryDummy());
       } catch (e) {
         console.error('Failed to parse auth result:', e);
       }
@@ -358,11 +481,24 @@ const Dashboard = () => {
           }));
           setConversationLog(formattedConversation);
         }
-        // AI 분석 업데이트
+        // AI 분석 업데이트 (백엔드 snake_case → 프론트엔드 camelCase 변환)
         if (data.summary && data.recommendations) {
+          const normalizedRecommendations = data.recommendations.map(rec => ({
+            id: rec.id,
+            name: rec.name,
+            price: rec.price,
+            discountedPrice: rec.discounted_price || rec.price,
+            discount: rec.discount || '할인 없음',
+            data: rec.data,
+            features: rec.features || [],
+            badge: rec.badge,
+            comparison: rec.comparison,
+            score: rec.score,
+            scoreBreakdown: rec.score_breakdown
+          }));
           setAiAnalysis({
             summary: data.summary,
-            recommendedPlans: data.recommendations
+            recommendedPlans: normalizedRecommendations
           });
         }
         // 고객 정보 업데이트
@@ -380,34 +516,15 @@ const Dashboard = () => {
   }, [loadDataFromAPI, loadFromSessionStorage]);
 
   const handleSearch = async (query, filters = []) => {
+    console.log('[Dashboard] Searching plans:', { query, filters });
     try {
       const response = await planApi.searchPlans({ query, filters });
-      setSearchResults(response.data.results);
+      console.log('[Dashboard] Search results:', response.data);
+      setSearchResults(response.data.results || []);
     } catch (err) {
       console.error('Search failed:', err);
-      // 검색 실패 시 샘플 결과
-      setSearchResults([
-        {
-          title: '5G 슈퍼플랜',
-          price: 69000,
-          description: '월 150GB + 속도 무제한',
-          tags: [
-            { type: 'popular', label: '인기' },
-            { type: 'discount', label: '가족결합 가능' }
-          ],
-          relevance: 0.95
-        },
-        {
-          title: '5G 프리미엄 언리미티드',
-          price: 79000,
-          description: '완전 무제한 데이터',
-          tags: [
-            { type: 'new', label: '신규' },
-            { type: 'discount', label: '가족결합 가능' }
-          ],
-          relevance: 0.88
-        }
-      ]);
+      // 검색 실패 시 빈 결과
+      setSearchResults([]);
     }
   };
 

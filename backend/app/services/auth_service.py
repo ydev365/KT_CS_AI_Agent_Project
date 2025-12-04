@@ -12,6 +12,7 @@ SAMPLE_CUSTOMERS: Dict[str, Dict[str, Any]] = {
     "01012345678": {
         "customer_id": "C001",
         "name": "김민수",
+        "gender": "남성",
         "birth_date": "19950315",
         "is_kt_customer": True,
         "current_plan": "5G 슬림 14GB",
@@ -30,6 +31,7 @@ SAMPLE_CUSTOMERS: Dict[str, Dict[str, Any]] = {
     "01098765432": {
         "customer_id": "C002",
         "name": "박영순",
+        "gender": "여성",
         "birth_date": "19550722",
         "is_kt_customer": True,
         "current_plan": "5G 시니어 베이직",
@@ -48,6 +50,7 @@ SAMPLE_CUSTOMERS: Dict[str, Dict[str, Any]] = {
     "01011112222": {
         "customer_id": "C003",
         "name": "이철호",
+        "gender": "남성",
         "birth_date": "19800515",
         "is_kt_customer": True,
         "current_plan": "5G 베이직",
@@ -67,6 +70,7 @@ SAMPLE_CUSTOMERS: Dict[str, Dict[str, Any]] = {
     "01033334444": {
         "customer_id": "C004",
         "name": "김지우",
+        "gender": "여성",
         "birth_date": "20100510",
         "is_kt_customer": True,
         "current_plan": "5G Y틴",
@@ -143,6 +147,7 @@ class AuthService:
                 phone=phone,
                 age=age,
                 birth_date=birth_date,
+                gender=customer_data.get("gender"),
                 target_categories=target_categories,
                 primary_target=primary_target,
                 current_plan=customer_data.get("current_plan"),

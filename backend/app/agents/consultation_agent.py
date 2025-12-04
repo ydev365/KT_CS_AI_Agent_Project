@@ -64,21 +64,16 @@ class ConsultationAgent:
 
         return greeting
 
-    def _check_should_end(self, message: str) -> bool:
-        """상담 종료 여부 판단"""
-        end_keywords = [
-            # 상담사 연결 요청
+    def _check_should_end_quick(self, message: str) -> bool:
+        """빠른 종료 체크 (명확한 상담사 연결 요청만)"""
+        # 명확한 상담사 연결 요청만 키워드로 체크
+        explicit_end_keywords = [
             "상담사 연결", "상담원 연결", "사람과 통화", "직원 연결",
-            "상담사랑", "상담원이랑", "사람이랑", "사람한테",
-            "상담사로", "상담원으로", "전문 상담", "실제 상담",
-            "연결해줘", "연결해주세요", "연결 해줘", "연결 해주세요",
-            # 상담 종료 요청
-            "상담 끝", "상담 종료", "그만할게요", "그만 할게요",
-            "끝낼게요", "끝낼게", "종료해줘", "종료 해줘"
+            "상담사랑", "상담원이랑", "사람이랑 통화",
+            "상담 끝", "상담 종료", "그만할게", "끝낼게"
         ]
-
         message_lower = message.lower()
-        return any(keyword in message_lower for keyword in end_keywords)
+        return any(keyword in message_lower for keyword in explicit_end_keywords)
 
     def _search_relevant_plans(self, message: str) -> tuple[List[Dict], str]:
         """메시지에서 관련 요금제 검색"""
@@ -166,6 +161,35 @@ class ConsultationAgent:
             return "\n\n## 이미 파악된 고객 조건 (다시 묻지 마세요!)\n" + "\n".join(known_info)
         return ""
 
+    async def _detect_end_with_api(self, ai_response: str, user_message: str) -> bool:
+        """GPT API를 사용하여 상담 종료 여부 판단"""
+        prompt = f"""다음 대화에서 고객이 요금제 선택을 확정하고 상담을 종료할 의향이 있는지 판단해주세요.
+
+고객 메시지: "{user_message}"
+AI 응답: "{ai_response}"
+
+판단 기준:
+- 고객이 "그걸로 해줘", "진행해줘", "좋아요", "그거로 할게", "신청할게" 등 확정 의사를 밝힌 경우 → true
+- AI가 "연결해드리겠습니다", "진행해드리겠습니다" 등 종료 멘트를 한 경우 → true
+- 아직 질문을 하거나 정보를 더 원하는 경우 → false
+
+반드시 true 또는 false 중 하나만 답하세요."""
+
+        try:
+            response = self.client.chat.completions.create(
+                model="gpt-4o-mini",  # 빠른 판단용 경량 모델
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+                max_tokens=10
+            )
+            result = response.choices[0].message.content.strip().lower()
+            should_end = "true" in result
+            print(f"[END DETECT API] user='{user_message[:30]}...', ai='{ai_response[:30]}...', should_end={should_end}")
+            return should_end
+        except Exception as e:
+            print(f"[END DETECT API ERROR] {e}")
+            return False
+
     async def process_message(self, user_message: str) -> AgentResponse:
         """
         고객 메시지 처리 및 응답 생성
@@ -176,10 +200,8 @@ class ConsultationAgent:
         Returns:
             에이전트 응답
         """
-        # 종료 여부 확인
-        should_end = self._check_should_end(user_message)
-
-        if should_end:
+        # 빠른 종료 체크 (명확한 상담사 연결 요청)
+        if self._check_should_end_quick(user_message):
             end_response = "네, 지금 바로 전문 상담사에게 연결해드리겠습니다. 지금까지 상담 내용을 전달해드릴게요. 잠시만 기다려주세요."
             self.conversation_history.append({"role": "user", "content": user_message})
             self.conversation_history.append({"role": "assistant", "content": end_response})
@@ -194,8 +216,16 @@ class ConsultationAgent:
         # 이미 파악된 정보 추출
         known_info = self._extract_known_info()
 
+        # 응답 지시 (JSON 형식 제거, 자연스러운 응답 유도)
+        response_instruction = """
+
+## 응답 지침
+- 고객에게 친절하고 자연스럽게 답변하세요.
+- 고객이 요금제를 선택하고 "그걸로 해줘", "진행해줘" 등 확정 의사를 밝히면 "상담사에게 연결해드리겠습니다" 형태로 마무리하세요.
+"""
+
         # 메시지 구성
-        messages = [{"role": "system", "content": self.system_prompt + known_info}]
+        messages = [{"role": "system", "content": self.system_prompt + known_info + response_instruction}]
 
         # RAG 컨텍스트가 있으면 추가
         if rag_context:
@@ -207,15 +237,30 @@ class ConsultationAgent:
         # 대화 기록 추가
         messages.extend(self.conversation_history)
 
-        # GPT 호출 (전화 상담이므로 20초 분량, 약 2문장)
-        response = self.client.chat.completions.create(
-            model=settings.OPENAI_MODEL,
-            messages=messages,
-            temperature=0.7,
-            max_tokens=150  # 약간 늘림 - 자연스러운 대화를 위해
-        )
+        # GPT 호출
+        try:
+            response = self.client.chat.completions.create(
+                model=settings.OPENAI_MODEL,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=300
+            )
 
-        assistant_message = response.choices[0].message.content
+            assistant_message = response.choices[0].message.content.strip()
+            print(f"[GPT RAW] {assistant_message[:200]}...")  # 처음 200자만 로그
+
+            # 추가 API 호출로 종료 여부 판단
+            should_end = await self._detect_end_with_api(assistant_message, user_message)
+
+        except Exception as e:
+            print(f"[GPT API ERROR] {e}")
+            assistant_message = "죄송합니다, 잠시 후 다시 말씀해 주시겠어요?"
+            should_end = False
+
+        # 빈 응답 체크
+        if not assistant_message or assistant_message.strip() == "":
+            print("[GPT WARNING] Empty response, using fallback")
+            assistant_message = "죄송합니다, 다시 한번 말씀해 주시겠어요?"
 
         # 대화 기록에 추가
         self.conversation_history.append({
@@ -228,7 +273,7 @@ class ConsultationAgent:
 
         return AgentResponse(
             text=assistant_message,
-            should_end=False,
+            should_end=should_end,
             plans_mentioned=plans_mentioned
         )
 

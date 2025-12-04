@@ -194,11 +194,13 @@ const QuickSearchPanel = ({ onSearch, searchResults }) => {
   const [activeTag, setActiveTag] = useState(null);
 
   const quickSearchTags = [
-    { id: 'youth', label: '청년요금제', icon: <FiTrendingUp /> },
-    { id: 'family', label: '가족결합', icon: <FiTag /> },
-    { id: '5g', label: '5G 요금제', icon: <FiTag /> },
+    { id: 'all', label: '일반', icon: <FiTag /> },
+    { id: 'youth', label: '청년(Y)', icon: <FiTrendingUp /> },
     { id: 'senior', label: '시니어', icon: <FiTag /> },
-    { id: 'unlimited', label: '무제한', icon: <FiTag /> },
+    { id: 'junior', label: '주니어', icon: <FiTag /> },
+    { id: 'disabled', label: '장애인', icon: <FiTag /> },
+    { id: 'foreigner', label: '외국인', icon: <FiTag /> },
+    { id: 'addon', label: '부가서비스', icon: <FiTag /> },
   ];
 
   const handleSearch = (e) => {

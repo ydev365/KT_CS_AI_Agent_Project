@@ -268,6 +268,11 @@ async def handle_session_end(session_id: str):
             conversation_history=conversation_for_scoring
         )
 
+        # 디버깅: 추천 결과 로그
+        print(f"[SESSION END] Recommendations count: {len(recommendations)}")
+        for i, rec in enumerate(recommendations):
+            print(f"[SESSION END] Rec {i+1}: {rec.name} | badge={rec.badge} | price={rec.price} | score={rec.score}")
+
         # 상담 완료 이벤트 브로드캐스트 (음성 상담 클라이언트로)
         completion_data = {
             'sessionId': session_id,

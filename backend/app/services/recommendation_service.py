@@ -3,6 +3,7 @@ from openai import OpenAI
 from pydantic import BaseModel
 
 from ..core.config import settings
+from ..utils.csv_loader import load_addon_services_csv, load_plans_csv
 from .rag_service import rag_service
 from .summary_service import ConversationSummary
 from .scoring_service import scoring_service, CustomerNeeds
@@ -34,6 +35,65 @@ class RecommendationService:
 
     def __init__(self):
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
+        self.addon_services = self._load_addon_services()
+        self.all_plans = self._load_all_plans()
+
+    def _load_all_plans(self) -> List[Dict[str, Any]]:
+        """plans.csv에서 전체 요금제 정보 로드"""
+        try:
+            plans = load_plans_csv(settings.PLANS_CSV_PATH)
+            print(f"[PLANS] Loaded {len(plans)} plans from CSV")
+            return plans
+        except Exception as e:
+            print(f"[PLANS] Failed to load plans: {e}")
+            return []
+
+    def _load_addon_services(self) -> Dict[str, Dict[str, Any]]:
+        """addon_services.csv에서 OTT 부가서비스 정보 로드"""
+        try:
+            services = load_addon_services_csv(settings.ADDON_SERVICES_CSV_PATH)
+            # OTT 타입별로 가장 저렴한 서비스 찾기
+            ott_services = {}
+            for service in services:
+                ott_type = service.get('ott_type')
+                if ott_type and service.get('price', 0) > 0:
+                    # 해당 OTT 타입이 없거나, 더 저렴하면 업데이트
+                    if ott_type not in ott_services or service['price'] < ott_services[ott_type]['price']:
+                        ott_services[ott_type] = service
+            print(f"[ADDON] Loaded {len(ott_services)} OTT services from CSV")
+            return ott_services
+        except Exception as e:
+            print(f"[ADDON] Failed to load addon services: {e}")
+            return {}
+
+    def get_addon_price(self, ott_name: str) -> tuple[str, int]:
+        """OTT 이름으로 부가서비스 이름과 가격 조회"""
+        ott_name_lower = ott_name.lower()
+
+        # OTT 키워드 매핑
+        ott_mapping = {
+            '넷플릭스': '넷플릭스',
+            'netflix': '넷플릭스',
+            '티빙': '티빙',
+            'tving': '티빙',
+            '디즈니': '디즈니+',
+            'disney': '디즈니+',
+            '유튜브': '유튜브프리미엄',
+            'youtube': '유튜브프리미엄',
+        }
+
+        # 매핑된 OTT 타입 찾기
+        ott_type = None
+        for keyword, mapped_type in ott_mapping.items():
+            if keyword in ott_name_lower:
+                ott_type = mapped_type
+                break
+
+        if ott_type and ott_type in self.addon_services:
+            service = self.addon_services[ott_type]
+            return service['service_name'], service['price']
+
+        return None, 0
 
     async def generate_recommendations(
         self,
@@ -73,7 +133,8 @@ class RecommendationService:
                 plans=plans,
                 context=context,
                 summary=summary,
-                conversation_history=conversation_history
+                conversation_history=conversation_history,
+                target_categories=target_categories
             )
 
         # 대화 기록 없으면 기존 GPT 기반 추천
@@ -88,54 +149,186 @@ class RecommendationService:
         plans: List[Dict],
         context: str,
         summary: ConversationSummary,
-        conversation_history: List[Dict[str, Any]]
+        conversation_history: List[Dict[str, Any]],
+        target_categories: List[str] = None
     ) -> List[PlanRecommendation]:
         """스코어링 기반 추천 생성"""
         # 대화 내용 분석하여 고객 니즈 파악
         needs = scoring_service.analyze_customer_needs(conversation_history)
 
-        # 스코어링 기반으로 3가지 유형 선정
-        best_plan, upsell_plan, budget_plan = scoring_service.select_recommendations(
+        # 스코어링 기반으로 2가지 유형 선정 (최적형, 업그레이드형)
+        best_plan, upsell_plan, _ = scoring_service.select_recommendations(
             plans=plans,
             needs=needs
         )
 
-        # GPT로 비교 설명 생성
         recommendations = []
-        plan_types = [
-            (best_plan, "best", "최적형"),
-            (upsell_plan, "upsell", "업그레이드형"),
-            (budget_plan, "budget", "절약형")
-        ]
 
-        for plan, badge, type_name in plan_types:
-            if plan:
-                score = scoring_service.calculate_plan_score(plan, needs, plans)
-                breakdown = scoring_service.get_score_breakdown(plan, needs, plans)
+        # 1. 최적형
+        if best_plan:
+            score = scoring_service.calculate_plan_score(best_plan, needs, plans)
+            breakdown = scoring_service.get_score_breakdown(best_plan, needs, plans)
+            comparison = await self._generate_comparison_text(
+                plan=best_plan, badge="best", type_name="최적형",
+                summary=summary, score=score
+            )
+            recommendations.append(PlanRecommendation(
+                id=1,
+                name=best_plan.get("plan_name", "알 수 없음"),
+                price=best_plan.get("price", 0),
+                discounted_price=best_plan.get("price", 0),
+                discount="할인 없음",
+                data=str(best_plan.get("data_gb", "정보 없음")),
+                features=self._extract_features(best_plan),
+                badge="best",
+                comparison=comparison,
+                score=score,
+                score_breakdown=breakdown
+            ))
 
-                comparison = await self._generate_comparison_text(
-                    plan=plan,
-                    badge=badge,
-                    type_name=type_name,
-                    summary=summary,
-                    score=score
-                )
+        # 2. 업그레이드형
+        if upsell_plan:
+            score = scoring_service.calculate_plan_score(upsell_plan, needs, plans)
+            breakdown = scoring_service.get_score_breakdown(upsell_plan, needs, plans)
+            comparison = await self._generate_comparison_text(
+                plan=upsell_plan, badge="upsell", type_name="업그레이드형",
+                summary=summary, score=score
+            )
+            recommendations.append(PlanRecommendation(
+                id=2,
+                name=upsell_plan.get("plan_name", "알 수 없음"),
+                price=upsell_plan.get("price", 0),
+                discounted_price=upsell_plan.get("price", 0),
+                discount="할인 없음",
+                data=str(upsell_plan.get("data_gb", "정보 없음")),
+                features=self._extract_features(upsell_plan),
+                badge="upsell",
+                comparison=comparison,
+                score=score,
+                score_breakdown=breakdown
+            ))
 
-                recommendations.append(PlanRecommendation(
-                    id=len(recommendations) + 1,
-                    name=plan.get("plan_name", "알 수 없음"),
-                    price=plan.get("price", 0),
-                    discounted_price=plan.get("discounted_price", plan.get("price", 0)),
-                    discount=plan.get("discount", "할인 없음"),
-                    data=str(plan.get("data_gb", "정보 없음")),
-                    features=self._extract_features(plan),
-                    badge=badge,
-                    comparison=comparison,
-                    score=score,
-                    score_breakdown=breakdown
-                ))
+        # 3. 절약형: 고객 타겟에 맞는 저렴한 요금제
+        budget_combo = self._create_budget_combo(plans, needs, summary, target_categories)
+        if budget_combo:
+            recommendations.append(budget_combo)
 
         return recommendations
+
+    def _create_budget_combo(
+        self,
+        plans: List[Dict],
+        needs,
+        summary: ConversationSummary,
+        target_categories: List[str] = None
+    ) -> PlanRecommendation:
+        """절약형: 고객 타겟에 맞는 저렴한 요금제 추천"""
+        # 전체 요금제에서 검색 (RAG 결과가 아닌 CSV 전체)
+        all_plans = self.all_plans if self.all_plans else plans
+
+        budget_plans = []
+
+        # 타겟별 저렴한 요금제 키워드
+        budget_keywords = ['슬림']  # 기본
+
+        if target_categories:
+            # 특수 타겟 확인
+            target_str = ' '.join(target_categories)
+            if '34세' in target_str or 'Y' in target_str or '청년' in target_str:
+                budget_keywords = ['Y 슬림', 'Y슬림', 'Y세이브']
+            elif '65세' in target_str or '시니어' in target_str:
+                budget_keywords = ['시니어']
+            elif '12세' in target_str or '주니어' in target_str:
+                budget_keywords = ['주니어 슬림', '주니어']
+            elif '외국인' in target_str:
+                budget_keywords = ['웰컴']
+            elif '장애인' in target_str or '복지' in target_str:
+                budget_keywords = ['복지']
+
+        print(f"[BUDGET] Searching in {len(all_plans)} plans with keywords: {budget_keywords}")
+
+        # 1. 전체 요금제에서 타겟에 맞는 저렴한 요금제 찾기
+        for plan in all_plans:
+            plan_name = plan.get('plan_name', '')
+            plan_target = plan.get('target', '전체')
+
+            # 저렴한 키워드 매칭
+            if any(kw in plan_name for kw in budget_keywords):
+                # 타겟도 맞는지 확인
+                if target_categories:
+                    if any(cat in plan_target for cat in target_categories) or plan_target == '전체':
+                        budget_plans.append(plan)
+                else:
+                    budget_plans.append(plan)
+
+        # 2. 타겟 맞는 요금제 없으면 전체에서 슬림 계열 찾기
+        if not budget_plans:
+            for plan in all_plans:
+                plan_name = plan.get('plan_name', '')
+                if '슬림' in plan_name:
+                    budget_plans.append(plan)
+            print(f"[BUDGET] No target-specific plans, found {len(budget_plans)} slim plans")
+
+        # 3. 슬림도 없으면 전체에서 가장 저렴한 것
+        if not budget_plans:
+            budget_plans = sorted(all_plans, key=lambda x: x.get('price', 999999))[:3]
+            print(f"[BUDGET] No slim plans, using cheapest from all")
+
+        if not budget_plans:
+            print("[BUDGET] No budget plans found, skipping")
+            return None
+
+        # 가장 저렴한 요금제 선택
+        budget_plans = sorted(budget_plans, key=lambda x: x.get('price', 999999))
+        base_plan = budget_plans[0]
+        base_price = base_plan.get('price', 0)
+        base_name = base_plan.get('plan_name', '알 수 없음')
+
+        print(f"[BUDGET] Selected: {base_name} ({base_price}원) | target: {base_plan.get('target')} | categories: {target_categories}")
+
+        # 스코어 계산 (전체 요금제 기준)
+        score = scoring_service.calculate_plan_score(base_plan, needs, all_plans)
+
+        # 고객이 OTT를 원하면 → 슬림 + OTT 조합
+        if needs.desired_otts:
+            ott = needs.desired_otts[0]
+            # CSV에서 OTT 부가서비스 정보 가져오기
+            addon_name, addon_price = self.get_addon_price(ott)
+
+            if addon_name and addon_price > 0:
+                total_price = base_price + addon_price
+                return PlanRecommendation(
+                    id=3,
+                    name=f"{base_name} + {addon_name}",
+                    price=total_price,
+                    discounted_price=total_price,
+                    discount="조합 할인",
+                    data=str(base_plan.get("data_gb", "정보 없음")),
+                    features=[
+                        f"요금제: {base_name} ({base_price:,}원)",
+                        f"부가서비스: {addon_name} ({addon_price:,}원)",
+                        f"합계: {total_price:,}원/월"
+                    ],
+                    badge="budget",
+                    comparison=f"저렴한 {base_name}에 {addon_name}을 추가하면 월 {total_price:,}원에 이용 가능합니다.",
+                    score=score,
+                    score_breakdown=None
+                )
+
+        # OTT 안 원하면 → 슬림 요금제만 추천
+        return PlanRecommendation(
+            id=3,
+            name=base_name,
+            price=base_price,
+            discounted_price=base_price,
+            discount="할인 없음",
+            data=str(base_plan.get("data_gb", "정보 없음")),
+            features=self._extract_features(base_plan),
+            badge="budget",
+            comparison=f"기본에 충실한 {base_name}으로 월 {base_price:,}원에 이용 가능합니다.",
+            score=score,
+            score_breakdown=None
+        )
 
     def _extract_features(self, plan: Dict) -> List[str]:
         """요금제에서 주요 기능 추출"""

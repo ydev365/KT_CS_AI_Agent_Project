@@ -26,6 +26,7 @@ class AuthResult(BaseModel):
     phone: str
     age: int
     birth_date: str
+    gender: Optional[str] = None  # 성별 (남성/여성)
 
     # 타겟 카테고리
     target_categories: List[str] = Field(..., description="적용 가능한 요금제 타겟 리스트")

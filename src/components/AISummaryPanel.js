@@ -222,7 +222,8 @@ const AISummaryPanel = ({ aiAnalysis }) => {
       requestedFeature: summary.requestedFeature || summary.requested_feature || '특별한 요청 없음',
       customerProfile: summary.customerProfile || summary.customer_profile || '정보 없음',
       mainConcern: summary.mainConcern || summary.main_concern || '특별한 불만 없음',
-      opportunity: summary.opportunity || '추가 확인 필요'
+      opportunity: summary.opportunity || '추가 확인 필요',
+      consultationResult: summary.consultationResult || summary.consultation_result || '상담 진행 중'
     };
   };
 
@@ -250,7 +251,8 @@ const AISummaryPanel = ({ aiAnalysis }) => {
       requestedFeature: '요약 대기 중',
       customerProfile: '정보 없음',
       mainConcern: '정보 없음',
-      opportunity: '정보 없음'
+      opportunity: '정보 없음',
+      consultationResult: '상담 대기 중'
     },
     recommendedPlans: []
   };
@@ -295,12 +297,16 @@ const AISummaryPanel = ({ aiAnalysis }) => {
           <KeyPointLabel>영업 기회:</KeyPointLabel>
           <KeyPointValue>{analysis.summary.opportunity}</KeyPointValue>
         </KeyPoint>
+        <KeyPoint style={{ background: '#fef3c7', borderLeftColor: '#f59e0b' }}>
+          <KeyPointLabel style={{ color: '#b45309' }}>상담 결과:</KeyPointLabel>
+          <KeyPointValue style={{ fontWeight: '600' }}>{analysis.summary.consultationResult}</KeyPointValue>
+        </KeyPoint>
       </SummarySection>
 
       <RecommendationSection>
         <SectionTitle>
           <FiPackage />
-          AI 추천 요금제 (상담사 참고용)
+          AI 추천 요금제
         </SectionTitle>
         <div style={{ fontSize: '12px', color: '#666', marginBottom: '12px', padding: '8px', background: '#f0f4ff', borderRadius: '8px' }}>
           💡 AI가 고객 상담 내용을 분석하여 3가지 유형의 요금제를 추천합니다.

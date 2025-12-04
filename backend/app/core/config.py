@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     # 데이터 경로
     PLANS_CSV_PATH: str = "./data/plans.csv"
+    ADDON_SERVICES_CSV_PATH: str = "./data/addon_services.csv"
 
     class Config:
         env_file = ".env"

@@ -233,7 +233,11 @@ class ScoringService:
             scores['benefit'] * needs.benefit_priority
         )
 
-        return round(total_score, 2)
+        # 최소 점수 보정 (기본 점수 + 가중치 점수)
+        # 기본 매칭도 50점 + 추가 점수 최대 50점
+        adjusted_score = 50 + (total_score / 2)
+
+        return round(min(100, adjusted_score), 1)
 
     def _score_data(self, plan: Dict, needs: CustomerNeeds, all_plans: List[Dict]) -> float:
         """데이터 점수 (0~100)"""
@@ -437,40 +441,51 @@ class ScoringService:
         # 점수순 정렬
         scored_plans.sort(key=lambda x: x['score'], reverse=True)
 
+        # 가격 기준 분류
+        prices = [sp['price'] for sp in scored_plans if sp['price'] > 0]
+        if prices:
+            avg_price = sum(prices) / len(prices)
+        else:
+            avg_price = 70000
+
         # 최적형: 총점 1위
         best = scored_plans[0]['plan'] if scored_plans else None
         best_price = scored_plans[0]['price'] if scored_plans else 0
 
-        # 업그레이드형: 최적형보다 가격 높고 혜택 좋은 요금제
+        # 업그레이드형: 최적형보다 가격이 높은 요금제 중 점수 높은 것
         upsell = None
         for sp in scored_plans:
             if sp['price'] > best_price and sp['plan'] != best:
                 upsell = sp['plan']
                 break
 
-        # 업그레이드형이 없으면 두 번째 높은 점수 중 가격 높은 것
+        # 업그레이드형이 없으면 전체 중 가장 비싼 것 (최적형 제외)
         if not upsell:
-            for sp in scored_plans[1:]:
+            price_sorted_desc = sorted(scored_plans, key=lambda x: x['price'], reverse=True)
+            for sp in price_sorted_desc:
                 if sp['plan'] != best:
                     upsell = sp['plan']
                     break
 
-        # 절약형: 조건 충족하면서 가격 낮은 요금제
+        # 절약형: 최적형보다 가격이 낮은 요금제 중 점수 높은 것
         budget = None
-        # 가격순 정렬
-        price_sorted = sorted(scored_plans, key=lambda x: x['price'])
-        for sp in price_sorted:
-            # 최소 점수 50 이상이고, 최적형/업그레이드형과 다른 요금제
-            if sp['score'] >= 50 and sp['plan'] != best and sp['plan'] != upsell:
+        for sp in scored_plans:
+            if sp['price'] < best_price and sp['plan'] != best and sp['plan'] != upsell:
                 budget = sp['plan']
                 break
 
         # 절약형이 없으면 가장 저렴한 것 (최적형/업그레이드형 제외)
         if not budget:
-            for sp in price_sorted:
+            price_sorted_asc = sorted(scored_plans, key=lambda x: x['price'])
+            for sp in price_sorted_asc:
                 if sp['plan'] != best and sp['plan'] != upsell:
                     budget = sp['plan']
                     break
+
+        # 디버깅 로그
+        print(f"[RECOMMEND] Best: {best.get('plan_name') if best else None} ({best_price}원)")
+        print(f"[RECOMMEND] Upsell: {upsell.get('plan_name') if upsell else None}")
+        print(f"[RECOMMEND] Budget: {budget.get('plan_name') if budget else None}")
 
         return best, upsell, budget
 

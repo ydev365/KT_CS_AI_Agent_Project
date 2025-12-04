@@ -123,7 +123,7 @@ const formatTime = (timestamp) => {
   return `${period} ${displayHours}:${displayMinutes}`;
 };
 
-const ConversationDisplay = ({ messages, isAITyping, autoPlayAudio = true }) => {
+const ConversationDisplay = ({ messages, isAITyping, autoPlayAudio = true, onAudioPlayComplete }) => {
   const messagesEndRef = useRef(null);
 
   // 새 메시지가 오면 스크롤
@@ -168,6 +168,7 @@ const ConversationDisplay = ({ messages, isAITyping, autoPlayAudio = true }) => 
                     <AudioPlayer
                       audioBase64={message.audio}
                       autoPlay={autoPlayAudio && index === messages.length - 1}
+                      onPlayComplete={index === messages.length - 1 ? onAudioPlayComplete : undefined}
                     />
                   )}
 

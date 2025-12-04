@@ -13,6 +13,7 @@ class ConversationSummary(BaseModel):
     customer_profile: str
     main_concern: str
     opportunity: str
+    consultation_result: str  # 상담 결과 (고객이 선택한 요금제/서비스)
 
 
 class SummaryService:
@@ -58,7 +59,8 @@ class SummaryService:
     "requested_feature": "고객이 원하는 기능/서비스 (예: 더 많은 데이터)",
     "customer_profile": "고객 특성 요약 (예: 가족 3명 KT 이용 중)",
     "main_concern": "고객의 주요 불만/관심사",
-    "opportunity": "영업 기회 포인트 (예: 가족 결합 할인 가능)"
+    "opportunity": "영업 기회 포인트 (예: 가족 결합 할인 가능)",
+    "consultation_result": "상담 결과 - 고객이 최종 선택한 요금제/서비스 조합 (예: 5G 슬림 + 넷플릭스 스탠다드로 변경 희망)"
 }}
 """
 
@@ -78,7 +80,8 @@ class SummaryService:
             requested_feature=result.get("requested_feature", "특별한 요청 없음"),
             customer_profile=result.get("customer_profile", "정보 부족"),
             main_concern=result.get("main_concern", "특별한 불만 없음"),
-            opportunity=result.get("opportunity", "추가 확인 필요")
+            opportunity=result.get("opportunity", "추가 확인 필요"),
+            consultation_result=result.get("consultation_result", "상담 진행 중")
         )
 
     def _format_conversation(self, conversation: List[Dict[str, Any]]) -> str:

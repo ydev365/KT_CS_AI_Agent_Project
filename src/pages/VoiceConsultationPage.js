@@ -261,6 +261,8 @@ const VoiceConsultationPage = () => {
   const [showEndModal, setShowEndModal] = useState(false);
   const [customerInfo, setCustomerInfo] = useState(null);
   const [sessionId, setSessionId] = useState(null);
+  const [pendingEndSession, setPendingEndSession] = useState(false); // TTS 재생 완료 대기용
+  const [consultationComplete, setConsultationComplete] = useState(false); // 상담 완료 대기
 
   // 초기화
   useEffect(() => {
@@ -313,8 +315,8 @@ const VoiceConsultationPage = () => {
       addAIMessage(data.text, data.audio, data.timestamp);
 
       if (data.shouldEnd) {
-        // 상담 종료 처리
-        handleConsultationEnd();
+        // TTS 재생 완료 후 종료 처리하도록 플래그 설정
+        setPendingEndSession(true);
       }
     });
 
@@ -326,9 +328,10 @@ const VoiceConsultationPage = () => {
 
     voiceSocket.onConsultationCompleted((data) => {
       console.log('Consultation completed:', data);
-      // 상담 결과를 저장하고 대시보드로 이동
+      // 상담 결과를 저장
       sessionStorage.setItem('consultationResult', JSON.stringify(data));
-      navigate('/dashboard');
+      // 상담 완료 플래그 설정 (TTS 완료 후 네비게이션)
+      setConsultationComplete(true);
     });
 
     // 클린업
@@ -426,6 +429,28 @@ const VoiceConsultationPage = () => {
     voiceSocket.endVoiceSession();
   };
 
+  // TTS 재생 완료 콜백
+  const handleAudioPlayComplete = useCallback(() => {
+    console.log('TTS playback complete', { pendingEndSession, consultationComplete });
+
+    // 상담이 완료되었으면 대시보드로 이동
+    if (consultationComplete) {
+      console.log('Navigating to dashboard after TTS complete...');
+      // 약간의 딜레이를 주어 자연스럽게 전환
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 500);
+      return;
+    }
+
+    // should_end가 true였던 경우 세션 종료 호출
+    if (pendingEndSession) {
+      console.log('Ending session after TTS...');
+      setPendingEndSession(false);
+      handleConsultationEnd();
+    }
+  }, [pendingEndSession, consultationComplete, navigate]);
+
   return (
     <PageContainer>
       <Header>
@@ -453,6 +478,7 @@ const VoiceConsultationPage = () => {
             messages={messages}
             isAITyping={isAITyping}
             autoPlayAudio={true}
+            onAudioPlayComplete={handleAudioPlayComplete}
           />
         </ConversationSection>
 

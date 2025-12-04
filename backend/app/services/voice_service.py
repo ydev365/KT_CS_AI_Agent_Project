@@ -99,15 +99,18 @@ class VoiceService:
         """TTS 발음 교정"""
         import re
 
-        # 순서 중요: 먼저 5G/4G 네트워크 명칭 처리 (숫자+G 패턴)
-        text = re.sub(r'5G', '파이브지', text)
-        text = re.sub(r'4G', '포지', text)
+        # 순서 중요: GB/MB 등 단위를 먼저 처리한 후 5G/4G 처리
+        # (4GB가 "포지B"로 변환되는 것 방지)
 
-        # 숫자+GB 패턴 (예: 14GB → 14기가바이트)
+        # 숫자+GB 패턴 (예: 4GB → 4기가바이트) - 5G/4G보다 먼저!
         def replace_gb(match):
             num = match.group(1)
             return f"{num}기가바이트"
         text = re.sub(r'(\d+)GB', replace_gb, text)
+
+        # 이제 5G/4G 네트워크 명칭 처리
+        text = re.sub(r'5G', '파이브지', text)
+        text = re.sub(r'4G', '포지', text)
 
         # 숫자+MB 패턴
         def replace_mb(match):
@@ -154,6 +157,9 @@ class VoiceService:
                             else:
                                 part_str = digits[digit] + small_units[i] + part_str
                         part = part // 10
+                    # "일만", "일억", "일조"에서 '일' 생략 (예: 12,500 → 만이천오백)
+                    if part_str == '일' and unit_idx > 0:
+                        part_str = ''
                     result.append(part_str + units[unit_idx])
                 num = num // 10000
                 unit_idx += 1
