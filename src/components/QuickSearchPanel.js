@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import styled from 'styled-components';
-import { FiSearch, FiTag, FiTrendingUp, FiChevronRight } from 'react-icons/fi';
+import { FiSearch, FiTag, FiChevronRight } from 'react-icons/fi';
 import { motion, AnimatePresence } from 'framer-motion';
 
 const PanelContainer = styled.div`
@@ -135,12 +135,6 @@ const ResultPrice = styled.div`
   margin-bottom: 8px;
 `;
 
-const ResultDescription = styled.p`
-  font-size: 0.85rem;
-  color: #666;
-  line-height: 1.5;
-  margin-bottom: 8px;
-`;
 
 const ResultTags = styled.div`
   display: flex;
@@ -164,13 +158,13 @@ const ResultTag = styled.span`
   font-weight: 600;
 `;
 
-const RelevanceScore = styled.div`
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 0.8rem;
-  color: #999;
-  margin-top: 8px;
+const DataInfo = styled.div`
+  font-size: 0.9rem;
+  color: #333;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  background: #f0f4ff;
+  border-radius: 8px;
 `;
 
 const EmptyState = styled.div`
@@ -194,8 +188,9 @@ const QuickSearchPanel = ({ onSearch, searchResults }) => {
   const [activeTag, setActiveTag] = useState(null);
 
   const quickSearchTags = [
-    { id: 'all', label: '일반', icon: <FiTag /> },
-    { id: 'youth', label: '청년(Y)', icon: <FiTrendingUp /> },
+    { id: 'all', label: '전체', icon: <FiTag /> },
+    { id: 'youth', label: '청년(Y)', icon: <FiTag /> },
+    { id: 'teen', label: 'Y틴', icon: <FiTag /> },
     { id: 'senior', label: '시니어', icon: <FiTag /> },
     { id: 'junior', label: '주니어', icon: <FiTag /> },
     { id: 'disabled', label: '장애인', icon: <FiTag /> },
@@ -206,13 +201,14 @@ const QuickSearchPanel = ({ onSearch, searchResults }) => {
   const handleSearch = (e) => {
     e.preventDefault();
     if (searchQuery.trim()) {
-      onSearch(searchQuery);
+      onSearch(searchQuery, []);  // 검색어로 검색
     }
   };
 
   const handleTagClick = (tagId) => {
     setActiveTag(tagId);
-    onSearch(tagId);
+    setSearchQuery('');  // 검색어 초기화
+    onSearch(null, [tagId]);  // 필터로 검색
   };
 
   const handleResultClick = (result) => {
@@ -274,7 +270,7 @@ const QuickSearchPanel = ({ onSearch, searchResults }) => {
                   <FiChevronRight />
                 </ResultTitle>
                 <ResultPrice>{result.price.toLocaleString()}원/월</ResultPrice>
-                <ResultDescription>{result.description}</ResultDescription>
+                <DataInfo>{result.description}</DataInfo>
                 <ResultTags>
                   {result.tags?.map((tag, idx) => (
                     <ResultTag key={idx} type={tag.type}>
@@ -282,10 +278,6 @@ const QuickSearchPanel = ({ onSearch, searchResults }) => {
                     </ResultTag>
                   ))}
                 </ResultTags>
-                <RelevanceScore>
-                  <FiTrendingUp />
-                  관련도 {Math.round(result.relevance * 100)}%
-                </RelevanceScore>
               </ResultCard>
             ))}
           </AnimatePresence>

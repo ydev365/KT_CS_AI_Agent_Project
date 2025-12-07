@@ -518,7 +518,11 @@ const Dashboard = () => {
   const handleSearch = async (query, filters = []) => {
     console.log('[Dashboard] Searching plans:', { query, filters });
     try {
-      const response = await planApi.searchPlans({ query, filters });
+      const response = await planApi.searchPlans({
+        query: query || undefined,  // null이면 undefined로 변환
+        filters,
+        pageSize: 100  // 전체 결과 가져오기
+      });
       console.log('[Dashboard] Search results:', response.data);
       setSearchResults(response.data.results || []);
     } catch (err) {
