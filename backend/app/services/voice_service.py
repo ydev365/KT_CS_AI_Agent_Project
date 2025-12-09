@@ -234,6 +234,39 @@ class VoiceService:
         audio_data = await self.text_to_speech(text, voice)
         return base64.b64encode(audio_data).decode('utf-8')
 
+    def text_to_speech_streaming_sync(
+        self,
+        text: str,
+        voice: Optional[str] = None,
+        chunk_size: int = 4096
+    ):
+        """
+        텍스트를 음성으로 변환 (동기 스트리밍 제너레이터)
+
+        Args:
+            text: 변환할 텍스트
+            voice: 음성 종류
+            chunk_size: 청크 크기 (바이트)
+
+        Yields:
+            Base64 인코딩된 오디오 청크
+        """
+        voice = voice or settings.TTS_VOICE
+
+        # 발음 교정
+        normalized_text = self._normalize_for_tts(text)
+
+        # 스트리밍 응답으로 TTS 요청
+        with self.client.audio.speech.with_streaming_response.create(
+            model=settings.TTS_MODEL,
+            voice=voice,
+            input=normalized_text,
+            response_format="mp3"
+        ) as response:
+            for chunk in response.iter_bytes(chunk_size=chunk_size):
+                if chunk:
+                    yield base64.b64encode(chunk).decode('utf-8')
+
 
 # 싱글톤 인스턴스
 voice_service = VoiceService()

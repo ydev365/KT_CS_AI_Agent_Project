@@ -30,6 +30,7 @@ def load_plans_csv(csv_path: str) -> List[Dict[str, Any]]:
             "smart_device": row.get("smart_device"),
             "data_share": row.get("data_share"),
             "y_dom": row.get("y_dom(under35)"),
+            "notes": row.get("notes"),  # 선택약정 정보
             "target": row.get("target", "전체"),
             "benefits1": row.get("benefits1"),
             "benefits2": row.get("benefits2")
@@ -90,6 +91,23 @@ def plan_to_document(plan: Dict[str, Any]) -> str:
         doc_parts.append(f"[부가혜택1] {plan['benefits1']}")
     if plan.get('benefits2'):
         doc_parts.append(f"[부가혜택2] {plan['benefits2']}")
+
+    # 선택약정 정보 (25% 할인)
+    if plan.get('notes'):
+        notes = plan['notes']
+        if '선택약정' in str(notes):
+            doc_parts.append(f"[선택약정] {notes}")
+            # 선택약정 가격 계산 (25% 할인)
+            if plan['price']:
+                discounted_price = int(plan['price'] * 0.75)
+                doc_parts.append(f"→ 선택약정 시 월 {discounted_price:,}원 (25% 할인, 12개월/24개월)")
+        else:
+            doc_parts.append(f"[비고] {notes}")
+    else:
+        # 선택약정 정보가 없어도 할인 가능함을 표시
+        if plan['price']:
+            discounted_price = int(plan['price'] * 0.75)
+            doc_parts.append(f"[선택약정] 12개월/24개월 약정 시 월 {discounted_price:,}원 (25% 할인)")
 
     return "\n".join([p for p in doc_parts if p])
 

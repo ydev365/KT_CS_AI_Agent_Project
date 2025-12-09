@@ -263,6 +263,8 @@ const VoiceConsultationPage = () => {
   const [sessionId, setSessionId] = useState(null);
   const [pendingEndSession, setPendingEndSession] = useState(false); // TTS 재생 완료 대기용
   const [consultationComplete, setConsultationComplete] = useState(false); // 상담 완료 대기
+  const [showStartModal, setShowStartModal] = useState(false); // 자동재생 실패 시만 표시
+  const [pendingGreeting, setPendingGreeting] = useState(null); // 재생 대기 중인 인사
 
   // 초기화
   useEffect(() => {
@@ -276,7 +278,7 @@ const VoiceConsultationPage = () => {
     }
 
     const auth = JSON.parse(authData);
-    setCustomerInfo(auth.customer);
+    setCustomerInfo(auth);  // auth 자체가 고객 정보
     setSessionId(storedSessionId);
 
     // 이벤트 리스너를 먼저 설정한 후 연결
@@ -284,19 +286,39 @@ const VoiceConsultationPage = () => {
       console.log('Connection success received');
       setConnectionStatus('connected');
       // 세션 시작 - API 호출 후 WebSocket 연결
-      initializeSession(storedSessionId, auth.customer);
+      initializeSession(storedSessionId, auth);
     });
 
     voiceSocket.onSessionStarted(async (data) => {
       console.log('Voice session started:', data);
-      // 초기 인사 메시지 + TTS
-      const greetingText = '안녕하세요! KT AI 상담사입니다. 어떤 요금제에 관심이 있으신가요?';
+
+      // 인사 메시지 생성
+      let greetingText;
+      if (auth.current_plan && auth.current_plan !== '없음') {
+        greetingText = `안녕하세요! KT AI 상담사입니다. 현재 사용하고 계신 요금제는 ${auth.current_plan}입니다. 어떤 요금제에 관심이 있으신가요?`;
+      } else {
+        greetingText = '안녕하세요! KT AI 상담사입니다. 어떤 요금제에 관심이 있으신가요?';
+      }
+
       try {
         const ttsResponse = await api.post('/api/voice/tts', { text: greetingText });
-        console.log('TTS response:', ttsResponse.data);
-        addAIMessage(greetingText, ttsResponse.data.audio_base64);
+        const audioBase64 = ttsResponse.data.audio_base64;
+
+        // 자동 재생 가능 여부 테스트 (무음으로)
+        const testAudio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+        try {
+          await testAudio.play();
+          testAudio.pause();
+          // 자동 재생 가능 - 메시지 추가 (AudioPlayer가 재생)
+          addAIMessage(greetingText, audioBase64);
+        } catch (playError) {
+          console.log('[Greeting] Autoplay blocked, showing modal');
+          // 자동 재생 실패 - 모달 표시
+          setPendingGreeting({ text: greetingText, audio: audioBase64 });
+          setShowStartModal(true);
+        }
       } catch (error) {
-        console.error('TTS error:', error);
+        console.error('[Greeting] TTS error:', error);
         addAIMessage(greetingText);
       }
     });
@@ -429,6 +451,15 @@ const VoiceConsultationPage = () => {
     voiceSocket.endVoiceSession();
   };
 
+  // 상담 시작 버튼 클릭 - 대기 중인 인사 재생
+  const handleStartConsultation = () => {
+    setShowStartModal(false);
+    if (pendingGreeting) {
+      addAIMessage(pendingGreeting.text, pendingGreeting.audio);
+      setPendingGreeting(null);
+    }
+  };
+
   // TTS 재생 완료 콜백
   const handleAudioPlayComplete = useCallback(() => {
     console.log('TTS playback complete', { pendingEndSession, consultationComplete });
@@ -521,6 +552,34 @@ const VoiceConsultationPage = () => {
           </EndButton>
         </ControlSection>
       </MainContent>
+
+      {/* 상담 시작 모달 (자동재생 차단 시에만 표시) */}
+      <AnimatePresence>
+        {showStartModal && (
+          <Modal
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <ModalContent
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+            >
+              <ModalTitle>AI 상담 준비 완료</ModalTitle>
+              <ModalText>
+                {customerInfo?.name}님, 환영합니다!<br/>
+                버튼을 클릭하면 AI 상담이 시작됩니다.
+              </ModalText>
+              <ModalButtons>
+                <ModalButton $primary onClick={handleStartConsultation}>
+                  상담 시작
+                </ModalButton>
+              </ModalButtons>
+            </ModalContent>
+          </Modal>
+        )}
+      </AnimatePresence>
 
       {/* 종료 확인 모달 */}
       <AnimatePresence>

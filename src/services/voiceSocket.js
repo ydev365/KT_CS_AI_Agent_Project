@@ -111,9 +111,29 @@ class VoiceSocketService {
     this._addListener('customer_message', callback);
   }
 
-  // AI 응답 리스너
+  // AI 응답 리스너 (기존 호환용)
   onVoiceResponse(callback) {
     this._addListener('voice_response', callback);
+  }
+
+  // AI 텍스트 응답 리스너 (스트리밍용 - 텍스트 먼저 수신)
+  onAITextResponse(callback) {
+    this._addListener('ai_text_response', callback);
+  }
+
+  // TTS 스트리밍 시작 리스너
+  onTTSStreamStart(callback) {
+    this._addListener('tts_stream_start', callback);
+  }
+
+  // TTS 스트리밍 청크 리스너
+  onTTSStreamChunk(callback) {
+    this._addListener('tts_stream_chunk', callback);
+  }
+
+  // TTS 스트리밍 종료 리스너
+  onTTSStreamEnd(callback) {
+    this._addListener('tts_stream_end', callback);
   }
 
   // 세션 에러 리스너

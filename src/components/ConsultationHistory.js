@@ -7,10 +7,11 @@ const PanelContainer = styled.div`
   background: white;
   border-radius: 15px;
   padding: 20px;
-  height: 100%;
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  max-height: 100%;
+  overflow: hidden;
 `;
 
 const PanelHeader = styled.div`

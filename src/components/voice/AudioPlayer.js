@@ -86,26 +86,21 @@ const AudioPlayer = ({ audioBase64, autoPlay = false, onPlayComplete }) => {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const audioRef = useRef(null);
+  const hasAutoPlayedRef = useRef(false);
 
-  // Base64를 AudioContext로 재생
-  useEffect(() => {
-    if (!audioBase64) return;
-
-    const audioSrc = `data:audio/mp3;base64,${audioBase64}`;
-
-    if (audioRef.current) {
-      audioRef.current.src = audioSrc;
-      audioRef.current.load();
-    }
-  }, [audioBase64]);
-
+  // 오디오 로드 및 자동 재생 처리
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || !audioBase64) return;
+
+    // 새 오디오일 때 autoPlay 플래그 리셋
+    hasAutoPlayedRef.current = false;
 
     const handleLoadedMetadata = () => {
       setDuration(audio.duration);
-      if (autoPlay) {
+      // autoPlay이고 아직 재생 안 했으면 재생
+      if (autoPlay && !hasAutoPlayedRef.current) {
+        hasAutoPlayedRef.current = true;
         audio.play().catch(console.error);
       }
     };
@@ -130,11 +125,17 @@ const AudioPlayer = ({ audioBase64, autoPlay = false, onPlayComplete }) => {
       }
     };
 
+    // 이벤트 리스너 먼저 등록
     audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('play', handlePlay);
     audio.addEventListener('pause', handlePause);
     audio.addEventListener('ended', handleEnded);
+
+    // 그 다음 오디오 소스 설정 및 로드
+    const audioSrc = `data:audio/mp3;base64,${audioBase64}`;
+    audio.src = audioSrc;
+    audio.load();
 
     return () => {
       audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
@@ -143,7 +144,7 @@ const AudioPlayer = ({ audioBase64, autoPlay = false, onPlayComplete }) => {
       audio.removeEventListener('pause', handlePause);
       audio.removeEventListener('ended', handleEnded);
     };
-  }, [autoPlay, onPlayComplete]);
+  }, [audioBase64, autoPlay, onPlayComplete]);
 
   const togglePlayPause = useCallback(() => {
     const audio = audioRef.current;

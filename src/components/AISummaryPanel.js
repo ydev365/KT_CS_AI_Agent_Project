@@ -7,10 +7,11 @@ const PanelContainer = styled.div`
   background: white;
   border-radius: 15px;
   padding: 20px;
-  height: 100%;
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
+  max-height: 100%;
+  overflow: hidden;
 `;
 
 const PanelHeader = styled.div`
@@ -78,18 +79,18 @@ const KeyPointValue = styled.span`
 `;
 
 const RecommendationSection = styled.div`
-  flex: 1;
   overflow-y: auto;
-  
+  min-height: 0;
+
   &::-webkit-scrollbar {
     width: 8px;
   }
-  
+
   &::-webkit-scrollbar-track {
     background: #f1f1f1;
     border-radius: 10px;
   }
-  
+
   &::-webkit-scrollbar-thumb {
     background: #888;
     border-radius: 10px;
@@ -97,12 +98,13 @@ const RecommendationSection = styled.div`
 `;
 
 const RecommendationCard = styled(motion.div)`
-  background: ${props => props.primary ? 
-    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' : 
+  background: ${props => props.primary ?
+    'linear-gradient(135deg, #667eea 0%, #764ba2 100%)' :
     'linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)'
   };
   border-radius: 12px;
   padding: 18px;
+  padding-bottom: 40px;
   margin-bottom: 16px;
   position: relative;
   overflow: hidden;

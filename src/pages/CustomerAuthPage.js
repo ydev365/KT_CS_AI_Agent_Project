@@ -126,9 +126,32 @@ const CustomerAuthPage = () => {
 
   const isValid = phone.length >= 10 && birthDate.length === 8;
 
+  // 오디오 자동재생 잠금해제 (브라우저 정책 우회)
+  const unlockAudio = () => {
+    // AudioContext 생성 및 resume
+    const AudioContext = window.AudioContext || window.webkitAudioContext;
+    if (AudioContext) {
+      const ctx = new AudioContext();
+      ctx.resume();
+      // 무음 재생
+      const buffer = ctx.createBuffer(1, 1, 22050);
+      const source = ctx.createBufferSource();
+      source.buffer = buffer;
+      source.connect(ctx.destination);
+      source.start();
+    }
+
+    // Audio 객체로도 잠금해제
+    const audio = new Audio('data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=');
+    audio.play().catch(() => {});
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isValid) return;
+
+    // 오디오 잠금해제 (사용자 클릭 시점에 실행)
+    unlockAudio();
 
     setLoading(true);
     setError('');

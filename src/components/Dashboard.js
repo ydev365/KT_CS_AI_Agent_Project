@@ -375,7 +375,7 @@ const Dashboard = () => {
             birthDate: ci.birth_date ? formatBirthDate(ci.birth_date) : null,
             age: ci.age,
             isKtMember: ci.is_kt_customer,
-            membershipGrade: ci.membership_grade || '일반',
+            membershipGrade: ci.membership_grade || (ci.is_kt_customer ? '일반' : '타사 고객'),
             ktJoinDate: ci.kt_join_date,
             currentPlan: ci.current_plan,
             currentPlanStartDate: ci.kt_join_date, // 가입일로 대체
@@ -410,7 +410,7 @@ const Dashboard = () => {
             birthDate: ci.birth_date ? formatBirthDate(ci.birth_date) : null,
             age: ci.age,
             isKtMember: ci.is_kt_customer,
-            membershipGrade: ci.membership_grade || '일반',
+            membershipGrade: ci.membership_grade || (ci.is_kt_customer ? '일반' : '타사 고객'),
             ktJoinDate: ci.kt_join_date,
             currentPlan: ci.current_plan,
             currentPlanStartDate: ci.kt_join_date,
@@ -579,7 +579,7 @@ const Dashboard = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5 }}
-            style={{ flex: '1', minHeight: 0 }}
+            style={{ flex: '0 1 auto', overflow: 'auto', maxHeight: '60%' }}
           >
             <AISummaryPanel aiAnalysis={aiAnalysis} />
           </motion.div>
@@ -588,7 +588,7 @@ const Dashboard = () => {
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.5, delay: 0.1 }}
-            style={{ flex: '0 0 auto', maxHeight: '350px' }}
+            style={{ flex: '1 1 auto', minHeight: '200px', overflow: 'auto' }}
           >
             <QuickSearchPanel
               onSearch={handleSearch}

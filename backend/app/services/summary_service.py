@@ -41,13 +41,16 @@ class SummaryService:
         conversation_text = self._format_conversation(conversation)
 
         # 요약 프롬프트
+        # None 값 처리
+        monthly_fee = customer_info.get('monthly_fee') or 0
+
         prompt = f"""다음 KT 고객센터 AI 상담 대화를 분석하여 요약해주세요.
 
 ## 고객 정보
-- 이름: {customer_info.get('name', '고객')}
-- 나이: {customer_info.get('age', '알 수 없음')}세
-- 현재 요금제: {customer_info.get('current_plan', '없음 (타사 고객)')}
-- 월 요금: {customer_info.get('monthly_fee', 0):,}원
+- 이름: {customer_info.get('name') or '고객'}
+- 나이: {customer_info.get('age') or '알 수 없음'}세
+- 현재 요금제: {customer_info.get('current_plan') or '없음 (타사 고객)'}
+- 월 요금: {monthly_fee:,}원
 
 ## 대화 내용
 {conversation_text}
