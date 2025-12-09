@@ -12,28 +12,33 @@ class VoiceService:
     def __init__(self):
         self.client = OpenAI(api_key=settings.OPENAI_API_KEY)
 
-    def _detect_audio_format(self, audio_data: bytes) -> str:
-        """오디오 데이터의 형식 감지"""
+    def _detect_audio_format(self, audio_data: bytes) -> tuple[str, bool]:
+        """
+        오디오 데이터의 형식 감지
+
+        Returns:
+            (format, is_valid): 포맷 이름과 유효성 여부
+        """
         # WebM 시그니처: 0x1A 0x45 0xDF 0xA3
         if audio_data[:4] == b'\x1a\x45\xdf\xa3':
-            return 'webm'
+            return 'webm', True
         # OGG 시그니처: OggS
         if audio_data[:4] == b'OggS':
-            return 'ogg'
+            return 'ogg', True
         # MP3 시그니처: ID3 또는 0xFF 0xFB
         if audio_data[:3] == b'ID3' or audio_data[:2] == b'\xff\xfb':
-            return 'mp3'
+            return 'mp3', True
         # WAV 시그니처: RIFF
         if audio_data[:4] == b'RIFF':
-            return 'wav'
+            return 'wav', True
         # FLAC 시그니처: fLaC
         if audio_data[:4] == b'fLaC':
-            return 'flac'
+            return 'flac', True
         # M4A/MP4 시그니처: ftyp (offset 4)
         if len(audio_data) > 8 and audio_data[4:8] == b'ftyp':
-            return 'm4a'
-        # 기본값
-        return 'webm'
+            return 'm4a', True
+        # 알 수 없는 포맷 - 유효하지 않음
+        return 'unknown', False
 
     async def speech_to_text(
         self,
@@ -59,13 +64,17 @@ class VoiceService:
             return ""
 
         # 오디오 형식 감지
-        detected_format = self._detect_audio_format(audio_data)
+        detected_format, is_valid = self._detect_audio_format(audio_data)
+
+        print(f"[STT] Detected format: {detected_format}, is_valid: {is_valid}")
+        print(f"[STT] First 20 bytes: {audio_data[:20].hex()}")
+
+        if not is_valid:
+            print(f"[STT] Warning: Invalid or corrupted audio data (unknown format)")
+            return ""
 
         if filename is None:
             filename = f"audio.{detected_format}"
-
-        print(f"[STT] Detected format: {detected_format}, filename: {filename}")
-        print(f"[STT] First 20 bytes: {audio_data[:20].hex()}")
 
         # 임시 파일로 저장하여 처리 (더 안정적)
         with tempfile.NamedTemporaryFile(suffix=f".{detected_format}", delete=False) as tmp_file:

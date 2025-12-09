@@ -99,12 +99,18 @@ class ConsultationAgent:
         # "차이", "비교" 등 비교 질문이면 이전 대화 맥락 포함해서 검색
         is_comparison_question = any(kw in message for kw in ["차이", "비교", "다른", "달라"])
 
-        if should_search or is_comparison_question:
-            # 비교 질문이면 이전 대화 맥락을 쿼리에 포함
-            if is_comparison_question and mentioned_plans:
+        # 맥락 의존적 질문 (제일 싼거, 더 비싼거, 다른거 등)
+        is_context_dependent = any(kw in message for kw in [
+            "싼", "저렴", "비싼", "제일", "더", "다른", "그거", "그게", "이거", "뭐가"
+        ])
+
+        if should_search or is_comparison_question or is_context_dependent:
+            # 맥락 의존적 질문이면 이전 대화 맥락을 쿼리에 포함
+            if (is_comparison_question or is_context_dependent) and len(self.conversation_history) > 0:
                 # 최근 AI 응답에서 언급된 요금제명 추출해서 검색
                 recent_context = " ".join([h["content"] for h in self.conversation_history[-4:]])
                 search_query = f"{recent_context} {message}"
+                print(f"[RAG] Context-aware search: {message} + recent context")
             else:
                 search_query = message
 

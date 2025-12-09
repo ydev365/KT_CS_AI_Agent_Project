@@ -21,10 +21,13 @@ class CustomerNeeds:
     max_price: int = 0                  # 최대 예산
     needs_roaming: bool = False         # 해외로밍 필요 여부
     needs_unlimited_call: bool = False  # 무제한 통화 필요 여부
+    target_categories: List[str] = None # 고객 타겟 카테고리
 
     def __post_init__(self):
         if self.desired_otts is None:
             self.desired_otts = []
+        if self.target_categories is None:
+            self.target_categories = []
 
 
 class ScoringService:
@@ -237,7 +240,41 @@ class ScoringService:
         # 기본 매칭도 50점 + 추가 점수 최대 50점
         adjusted_score = 50 + (total_score / 2)
 
+        # 타겟 매칭 보너스 (고객 타겟에 맞는 요금제면 가점)
+        target_bonus = self._score_target_match(plan, needs)
+        adjusted_score += target_bonus
+
         return round(min(100, adjusted_score), 1)
+
+    def _score_target_match(self, plan: Dict, needs: CustomerNeeds) -> float:
+        """타겟 매칭 보너스 점수 (0~15)"""
+        if not needs.target_categories:
+            return 0
+
+        plan_name = plan.get('plan_name', '').lower()
+        plan_target = plan.get('target', '전체')
+
+        # 타겟별 키워드 매핑
+        target_keywords = {
+            '만 34세 이하': ['5g y', 'y 슬림', 'y슬림', 'y세이브', 'y베이직', 'y초이스', 'y 세이브', 'y 베이직', 'y 초이스'],
+            '만 18세 이하': ['y틴', 'yteen', 'y 틴'],
+            '만 12세 이하': ['주니어', 'junior'],
+            '만 65세 이상': ['시니어', 'senior'],
+        }
+
+        for target_cat in needs.target_categories:
+            # 요금제의 target 필드가 고객 타겟과 일치
+            if target_cat in plan_target:
+                print(f"[TARGET BONUS] {plan.get('plan_name')} matched target '{target_cat}' (+15)")
+                return 15  # 타겟 완전 일치
+
+            # 요금제 이름에 타겟 키워드 포함
+            keywords = target_keywords.get(target_cat, [])
+            if any(kw in plan_name for kw in keywords):
+                print(f"[TARGET BONUS] {plan.get('plan_name')} matched keyword for '{target_cat}' (+12)")
+                return 12  # 키워드 매칭
+
+        return 0
 
     def _score_data(self, plan: Dict, needs: CustomerNeeds, all_plans: List[Dict]) -> float:
         """데이터 점수 (0~100)"""

@@ -144,6 +144,61 @@ class RecommendationService:
             summary=summary
         )
 
+    def _detect_plan_category_from_conversation(self, conversation_history: List[Dict[str, Any]]) -> str:
+        """대화에서 요금제 카테고리 감지 (Y요금제, 시니어 등)"""
+        if not conversation_history:
+            return None
+
+        conversation_text = ' '.join([
+            msg.get('content', '') for msg in conversation_history
+        ]).lower()
+
+        # Y요금제 (청년)
+        y_keywords = ['청년', 'y요금제', 'y 요금제', '5g y', 'y베이직', 'y슬림', 'y 베이직', 'y 슬림']
+        if any(kw in conversation_text for kw in y_keywords):
+            return 'Y'
+
+        # 시니어
+        senior_keywords = ['시니어', '어르신', '65세']
+        if any(kw in conversation_text for kw in senior_keywords):
+            return '시니어'
+
+        # Y틴
+        teen_keywords = ['y틴', 'yteen', '청소년', '학생 요금']
+        if any(kw in conversation_text for kw in teen_keywords):
+            return 'Y틴'
+
+        # 주니어
+        junior_keywords = ['주니어', '어린이', '키즈']
+        if any(kw in conversation_text for kw in junior_keywords):
+            return '주니어'
+
+        return None
+
+    def _filter_plans_by_category(self, plans: List[Dict], category: str) -> List[Dict]:
+        """카테고리에 맞는 요금제만 필터링"""
+        if not category:
+            return plans
+
+        category_keywords = {
+            'Y': ['5g y', ' y ', 'y 베이직', 'y 슬림', 'y 세이브', 'y 초이스', 'y베이직', 'y슬림', 'y세이브', 'y초이스'],
+            '시니어': ['시니어'],
+            'Y틴': ['y틴', 'yteen'],
+            '주니어': ['주니어', 'junior']
+        }
+
+        keywords = category_keywords.get(category, [])
+        if not keywords:
+            return plans
+
+        filtered = [
+            p for p in plans
+            if any(kw in p.get('plan_name', '').lower() for kw in keywords)
+        ]
+
+        print(f"[RECOMMEND] Filtered to {len(filtered)} {category} plans from {len(plans)} total")
+        return filtered if filtered else plans
+
     async def _generate_scoring_based_recommendations(
         self,
         plans: List[Dict],
@@ -153,8 +208,21 @@ class RecommendationService:
         target_categories: List[str] = None
     ) -> List[PlanRecommendation]:
         """스코어링 기반 추천 생성"""
+        # 대화에서 요금제 카테고리 감지 (Y요금제, 시니어 등)
+        plan_category = self._detect_plan_category_from_conversation(conversation_history)
+        if plan_category:
+            print(f"[RECOMMEND] Detected plan category from conversation: {plan_category}")
+            # 해당 카테고리 요금제만 필터링
+            plans = self._filter_plans_by_category(plans, plan_category)
+            # all_plans에서도 필터링 (budget용)
+            self._filtered_all_plans = self._filter_plans_by_category(self.all_plans, plan_category)
+        else:
+            self._filtered_all_plans = self.all_plans
+
         # 대화 내용 분석하여 고객 니즈 파악
         needs = scoring_service.analyze_customer_needs(conversation_history)
+        # 고객 타겟 카테고리 설정 (Y요금제, 시니어 등 매칭용)
+        needs.target_categories = target_categories or []
 
         # 스코어링 기반으로 2가지 유형 선정 (최적형, 업그레이드형)
         best_plan, upsell_plan, _ = scoring_service.select_recommendations(
@@ -208,8 +276,9 @@ class RecommendationService:
                 score_breakdown=breakdown
             ))
 
-        # 3. 절약형: 고객 타겟에 맞는 저렴한 요금제
-        budget_combo = self._create_budget_combo(plans, needs, summary, target_categories)
+        # 3. 절약형: best보다 저렴한 요금제
+        best_price = best_plan.get('price', 0) if best_plan else 999999
+        budget_combo = self._create_budget_combo(plans, needs, summary, target_categories, best_price)
         if budget_combo:
             recommendations.append(budget_combo)
 
@@ -220,11 +289,20 @@ class RecommendationService:
         plans: List[Dict],
         needs,
         summary: ConversationSummary,
-        target_categories: List[str] = None
+        target_categories: List[str] = None,
+        best_price: int = 999999
     ) -> PlanRecommendation:
-        """절약형: 고객 타겟에 맞는 저렴한 요금제 추천"""
-        # 전체 요금제에서 검색 (RAG 결과가 아닌 CSV 전체)
+        """절약형: best보다 저렴한 요금제 추천"""
+        # Budget은 전체 요금제에서 검색 (대화 맥락 카테고리에 국한하지 않음)
+        # → Best/Upsell은 Y요금제만, Budget은 더 싼 거면 일반 요금제도 OK
         all_plans = self.all_plans if self.all_plans else plans
+
+        # best보다 저렴한 요금제만 필터링
+        cheaper_plans = [p for p in all_plans if p.get('price', 999999) < best_price]
+
+        if not cheaper_plans:
+            print(f"[BUDGET] No plans cheaper than best ({best_price}원), skipping")
+            return None
 
         budget_plans = []
 
@@ -245,10 +323,10 @@ class RecommendationService:
             elif '장애인' in target_str or '복지' in target_str:
                 budget_keywords = ['복지']
 
-        print(f"[BUDGET] Searching in {len(all_plans)} plans with keywords: {budget_keywords}")
+        print(f"[BUDGET] Searching in {len(cheaper_plans)} cheaper plans (< {best_price}원) with keywords: {budget_keywords}")
 
-        # 1. 전체 요금제에서 타겟에 맞는 저렴한 요금제 찾기
-        for plan in all_plans:
+        # 1. best보다 저렴한 요금제 중 타겟에 맞는 것 찾기
+        for plan in cheaper_plans:
             plan_name = plan.get('plan_name', '')
             plan_target = plan.get('target', '전체')
 
@@ -261,18 +339,54 @@ class RecommendationService:
                 else:
                     budget_plans.append(plan)
 
-        # 2. 타겟 맞는 요금제 없으면 전체에서 슬림 계열 찾기
+        # 2. 타겟 맞는 요금제 없으면 cheaper_plans에서 슬림 계열 찾기 (타겟도 체크!)
         if not budget_plans:
-            for plan in all_plans:
+            for plan in cheaper_plans:
                 plan_name = plan.get('plan_name', '')
-                if '슬림' in plan_name:
-                    budget_plans.append(plan)
-            print(f"[BUDGET] No target-specific plans, found {len(budget_plans)} slim plans")
+                plan_target = plan.get('target', '전체')
 
-        # 3. 슬림도 없으면 전체에서 가장 저렴한 것
+                if '슬림' in plan_name:
+                    # 타겟 체크: 고객 타겟에 맞거나 '전체'인 경우만
+                    is_target_match = False
+                    if plan_target == '전체':
+                        is_target_match = True
+                    elif target_categories:
+                        # 고객 타겟과 요금제 타겟이 맞는지 확인
+                        for cat in target_categories:
+                            if cat in plan_target or plan_target in cat:
+                                is_target_match = True
+                                break
+                        # 주니어/시니어 등 다른 연령대 요금제 제외
+                        if '주니어' in plan_name and '12세' not in ' '.join(target_categories):
+                            is_target_match = False
+                        if '시니어' in plan_name and '65세' not in ' '.join(target_categories):
+                            is_target_match = False
+                        if 'Y틴' in plan_name and '18세' not in ' '.join(target_categories):
+                            is_target_match = False
+
+                    if is_target_match:
+                        budget_plans.append(plan)
+
+            print(f"[BUDGET] No target-specific plans, found {len(budget_plans)} slim plans matching target")
+
+        # 3. 슬림도 없으면 cheaper_plans에서 타겟 맞는 가장 저렴한 것
         if not budget_plans:
-            budget_plans = sorted(all_plans, key=lambda x: x.get('price', 999999))[:3]
-            print(f"[BUDGET] No slim plans, using cheapest from all")
+            # 타겟 필터링: 주니어/시니어/Y틴 등 다른 연령대 제외
+            target_str = ' '.join(target_categories) if target_categories else ''
+            filtered_cheaper = []
+            for plan in cheaper_plans:
+                plan_name = plan.get('plan_name', '')
+                # 다른 연령대 요금제 제외
+                if '주니어' in plan_name and '12세' not in target_str:
+                    continue
+                if '시니어' in plan_name and '65세' not in target_str:
+                    continue
+                if 'Y틴' in plan_name and '18세' not in target_str:
+                    continue
+                filtered_cheaper.append(plan)
+
+            budget_plans = sorted(filtered_cheaper, key=lambda x: x.get('price', 999999))[:3]
+            print(f"[BUDGET] No slim plans, using cheapest from {len(filtered_cheaper)} target-compatible plans")
 
         if not budget_plans:
             print("[BUDGET] No budget plans found, skipping")

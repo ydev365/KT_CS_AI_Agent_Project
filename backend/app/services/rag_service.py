@@ -8,17 +8,34 @@ class RAGService:
     def __init__(self):
         self.vector_db = vector_db_service
 
-    def _analyze_query_intent(self, query: str) -> Tuple[Optional[Dict], Optional[str], str]:
+    def _analyze_query_intent(self, query: str) -> Tuple[Optional[Dict], Optional[str], str, Optional[str]]:
         """
         쿼리에서 필터링/정렬 의도 분석
 
         Returns:
-            (filters, sort_by, sort_order)
+            (filters, sort_by, sort_order, plan_category)
         """
         query_lower = query.lower()
         filters = {}
         sort_by = None
         sort_order = "asc"
+        plan_category = None  # Y요금제, 시니어 등 맥락 카테고리
+
+        # 맥락에서 요금제 카테고리 감지
+        y_plan_keywords = ["청년", "y 요금제", "y요금제", "5g y", "y 베이직", "y 슬림", "y세이브", "y베이직", "y슬림"]
+        senior_keywords = ["시니어", "어르신", "65세"]
+        teen_keywords = ["y틴", "yteen", "청소년", "학생"]
+        junior_keywords = ["주니어", "어린이", "키즈"]
+
+        if any(kw in query_lower for kw in y_plan_keywords):
+            plan_category = "Y"
+            print(f"[RAG] Detected Y요금제 context")
+        elif any(kw in query_lower for kw in senior_keywords):
+            plan_category = "시니어"
+        elif any(kw in query_lower for kw in teen_keywords):
+            plan_category = "Y틴"
+        elif any(kw in query_lower for kw in junior_keywords):
+            plan_category = "주니어"
 
         # OTT 관련 키워드 감지
         ott_keywords = ["ott", "넷플릭스", "티빙", "디즈니", "유튜브", "netflix", "tving", "disney"]
@@ -40,7 +57,7 @@ class RAGService:
         if "무제한" in query_lower:
             filters["has_unlimited_data"] = True
 
-        return (filters if filters else None, sort_by, sort_order)
+        return (filters if filters else None, sort_by, sort_order, plan_category)
 
     def search_plans(
         self,
@@ -222,30 +239,72 @@ class RAGService:
             (검색된 요금제 리스트, LLM 컨텍스트)
         """
         # 쿼리 의도 분석
-        filters, sort_by, sort_order = self._analyze_query_intent(query)
+        filters, sort_by, sort_order, plan_category = self._analyze_query_intent(query)
 
         # OTT 관련 질문인지 판단
         is_ott_related = self._is_ott_related(query)
+        print(f"[RAG] OTT related: {is_ott_related}")
 
         # OTT 관련이면 조합 옵션 항상 준비 (GPT가 상황에 맞게 활용)
         combo_options = None
         if is_ott_related:
             combo_options = self._get_combo_options(target_categories, top_k=5)
+            print(f"[RAG] Combo options count: {len(combo_options) if combo_options else 0}")
+
+        # 카테고리가 감지되면 검색 쿼리에 카테고리 추가
+        search_query = query
+        if plan_category:
+            category_search_terms = {
+                "Y": "5G Y 청년 요금제",
+                "시니어": "시니어 요금제",
+                "Y틴": "Y틴 청소년 요금제",
+                "주니어": "주니어 어린이 요금제"
+            }
+            search_query = f"{category_search_terms.get(plan_category, '')} {query}"
+            print(f"[RAG] Enhanced search query for {plan_category}: {search_query[:50]}...")
 
         # 검색 수행 (필터 + 정렬 적용)
         plans = self.search_plans(
-            query=query,
+            query=search_query,
             target_categories=target_categories,
-            top_k=top_k,
+            top_k=top_k * 2 if plan_category else top_k,  # 카테고리 필터링 시 더 많이 검색
             filters=filters,
             sort_by=sort_by,
             sort_order=sort_order
         )
 
+        # 맥락 카테고리가 있으면 해당 카테고리 요금제만 필터링
+        category_hint = ""
+        if plan_category and plans:
+            category_keywords = {
+                "Y": ["5g y", " y ", "y 베이직", "y 슬림", "y 세이브", "y 초이스", "y베이직", "y슬림", "y세이브", "y초이스"],
+                "시니어": ["시니어", "senior"],
+                "Y틴": ["y틴", "yteen", "y 틴"],
+                "주니어": ["주니어", "junior", "키즈"]
+            }
+            keywords = category_keywords.get(plan_category, [])
+            if keywords:
+                # 디버깅: 검색된 요금제 이름 출력
+                plan_names = [p.get("plan_name", "unknown") for p in plans]
+                print(f"[RAG] Plans before filter: {plan_names[:5]}")
+
+                filtered_plans = [
+                    p for p in plans
+                    if any(kw in p.get("plan_name", "").lower() for kw in keywords)
+                ]
+                if filtered_plans:
+                    plans = filtered_plans[:top_k]
+                    category_hint = f"[{plan_category} 요금제만 필터링됨]\n\n"
+                    print(f"[RAG] Filtered to {len(plans)} {plan_category} plans: {[p.get('plan_name') for p in plans]}")
+                else:
+                    print(f"[RAG] WARNING: No {plan_category} plans found in results, using original")
+
         # 컨텍스트 생성 (OTT면 조합 옵션 포함)
         context = self.build_context(plans, combo_options, is_ott_related)
 
-        # 정렬 정보가 있으면 컨텍스트에 힌트 추가
+        # 정렬/필터 정보가 있으면 컨텍스트에 힌트 추가
+        if category_hint:
+            context = category_hint + context
         if sort_by == "price" and sort_order == "asc" and plans:
             context = f"[가격순 정렬됨 - 첫 번째가 최저가]\n\n{context}"
         elif sort_by == "price" and sort_order == "desc" and plans:

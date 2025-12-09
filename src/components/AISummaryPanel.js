@@ -10,8 +10,6 @@ const PanelContainer = styled.div`
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.1);
-  max-height: 100%;
-  overflow: hidden;
 `;
 
 const PanelHeader = styled.div`
@@ -79,22 +77,6 @@ const KeyPointValue = styled.span`
 `;
 
 const RecommendationSection = styled.div`
-  overflow-y: auto;
-  min-height: 0;
-
-  &::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  &::-webkit-scrollbar-track {
-    background: #f1f1f1;
-    border-radius: 10px;
-  }
-
-  &::-webkit-scrollbar-thumb {
-    background: #888;
-    border-radius: 10px;
-  }
 `;
 
 const RecommendationCard = styled(motion.div)`

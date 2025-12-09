@@ -101,6 +101,11 @@ async def voice_input(sid, data):
         # STT 변환
         text = await voice_service.speech_to_text(audio_data)
 
+        # 빈 결과면 무시 (오디오 손상 또는 음성 없음)
+        if not text or not text.strip():
+            print(f"[VOICE INPUT] Empty STT result, ignoring")
+            return
+
         # 고객 메시지 저장
         session_service.add_message(session_id, {
             'speaker': 'customer',
